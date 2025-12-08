@@ -30,12 +30,10 @@ runs:
         path: ~/.cache/pre-commit
         key: pre-commit|${{ runner.os }}|${{ hashFiles('.pre-commit-config.yaml') }}
 
-    - name: Install Python deps, pre-commit and jq
+    - name: Install Python deps, pre-commit
       shell: bash
       run: |
         set -euo pipefail
-        sudo apt-get update
-        sudo apt-get install -y jq
         pip install --no-cache-dir pre-commit
 
     - name: Setup reviewdog binary
