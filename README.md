@@ -1,21 +1,58 @@
-# Run <TOOL> via pre-commit + reviewdog
+# Run mypy via pre-commit + reviewdog
 
-> Template README — replace `<TOOL>` and `<HOOK_ID>` with your actual tool and pre-commit hook name.
+This GitHub Action runs [`mypy`](https://mypy-lang.org/) via [`pre-commit`](https://pre-commit.com/) on a ref range and reports diagnostics to pull
+requests using [reviewdog](https://github.com/reviewdog/reviewdog), using RDJSON as the intermediate format.
 
-This GitHub Action runs a single [`pre-commit`](https://pre-commit.com/) hook on a diff range and reports results to pull requests
-using [reviewdog](https://github.com/reviewdog/reviewdog).
-
-Typical use case:
-
-- Run the `<HOOK_ID>` pre-commit hook (e.g. `actionlint-oneline`)
-- Annotate problems directly on the PR diff
-- Fail the job if violations are found
+It uses the `mypy-json-output` hook to produce JSON lines, then converts them to RDJSON via a jq script.
 
 ## Requirements
 
-- A `.pre-commit-config.yaml` in your repository with the `<HOOK_ID>` hook enabled
-- GitHub Actions enabled on the repository
-- `secrets.GITHUB_TOKEN` available (default on GitHub-hosted runners)
+Add the mypy hooks to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          # add stubs the project needs
+          - types-requests
+          - types-setuptools
+      - id: mypy
+        alias: mypy-json-output
+        name: mypy (json output)
+        args:
+          [
+            "--output",
+            "json",
+            "--hide-error-context",
+            "--show-column-numbers",
+            "--show-absolute-path",
+            "--no-pretty",
+            "--ignore-missing-imports",
+            "--scripts-are-modules",
+          ]
+        additional_dependencies:
+          # add stubs the project needs
+          - types-requests
+          - types-setuptools
+        stages: [manual]
+````
+
+You also need:
+
+* GitHub Actions enabled on the repository
+* `secrets.GITHUB_TOKEN` available (default on GitHub-hosted runners)
+* A runner with `jq` available
+* The jq filter file at `lib/mypy-json-to-rdjson.jq` in this action repository
+* `actions/checkout` fetching enough history to include both `from-ref` and `to-ref`, for example:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+```
 
 ## Inputs
 
@@ -27,45 +64,55 @@ Typical use case:
 
 ## Outputs
 
-| Name       | Description                                  |
-|------------|----------------------------------------------|
-| `exitcode` | Exit code of the `<HOOK_ID>` pre-commit hook |
+| Name       | Description                                       |
+|------------|---------------------------------------------------|
+| `exitcode` | Exit code returned by the `mypy-json-output` hook |
 
 ## Usage
 
-In your workflow (example for a pull request):
+Example workflow for pull requests:
 
 ```yaml
-name: Lint with <TOOL>
+name: Type-check with mypy
 
 on:
   pull_request:
 
 jobs:
-  lint:
+  mypy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Run <TOOL> via pre-commit + reviewdog
-        uses: <OWNER>/<REPO>@v1
+      - name: Run mypy via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-mypy-reviewdog@v1
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-````
+```
+
+This will:
+
+1. Run `mypy-json-output` on the files changed between `from-ref` and `to-ref`.
+2. Convert the JSONL output to RDJSON using the provided jq script.
+3. Report diagnostics as inline comments on the pull request via reviewdog.
+4. Fail the job if type errors are found.
 
 ## Versioning
 
 It’s recommended to pin to the major version:
 
 ```yaml
-uses: <OWNER>/<REPO>@v1
+uses: leinardi/gha-pre-commit-mypy-reviewdog@v1
 ```
 
 For fully reproducible behavior, pin to an exact tag:
 
 ```yaml
-uses: <OWNER>/<REPO>@v1.0.0
+uses: leinardi/gha-pre-commit-mypy-reviewdog@v1.0.0
 ```
